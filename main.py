@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import random
 import nest_asyncio
@@ -37,6 +38,9 @@ Thread(target=run_health_check_server, daemon=True).start()
 # ==================== الإعدادات ====================
 BOT_TOKEN = "8950811882:AAEssHhN928jnIitxp3EMZEc_-at7JBXqTc"
 
+# 🔴 آيديات المشرفين المعتمدة
+ADMIN_IDS = [1330730590, 7994623189] 
+
 bot_data = {
     "groups": [],
     "messages": [],
@@ -55,14 +59,21 @@ def get_main_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "أهلاً بك في لوحة تحكم بوت النشر التلقائي!\nاختر ما تريد القيام به من الأزرار أدناه:",
-        reply_markup=get_main_keyboard()
-    )
+    if update.effective_user.id in ADMIN_IDS:
+        await update.message.reply_text(
+            "أهلاً بك في لوحة تحكم بوت النشر التلقائي!\nاختر ما تريد القيام به من الأزرار أدناه:",
+            reply_markup=get_main_keyboard()
+        )
+    else:
+        await update.message.reply_text("أهلاً بك! تم استلام رسالتك وسنرد عليك في أقرب وقت.")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    if query.from_user.id not in ADMIN_IDS:
+        return
+
     data = query.data
 
     if data == "toggle_status":
@@ -73,9 +84,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info = f"<b>📊 الإعدادات الحالية:</b>\n\n"
         info += f"• <b>عدد القروبات:</b> {len(bot_data['groups'])}\n"
         info += f"• <b>عدد الرسائل والصور:</b> {len(bot_data['messages'])}\n"
+        info += f"• <b>عدد المشرفين:</b> {len(ADMIN_IDS)}\n"
         info += f"• <b>التأخير الأول:</b> عشوائي (2 - 3 دقائق)\n"
         info += f"• <b>الفاصل بين كل رسالة:</b> عشوائي (40 ثانية - 5 دقائق)\n"
-        info += f"• <b>نمط التوزيع:</b> عشوائي وموزع بالكامل بين القروبات 🔀\n"
+        info += f"• <b>ترتيب النشر:</b> عشوائي وموزع بالكامل 🔀\n"
         info += f"• <b>حالة النشر:</b> {'مفعل 🟢' if bot_data['is_running'] else 'متوقف 🔴'}"
         await query.message.reply_text(info, parse_mode="HTML")
 
@@ -96,6 +108,54 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("🗑️ تم مسح جميع الرسائل والصور بنجاح.")
 
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    # 📩 1️⃣ إذا كانت الرسالة من مستخدم عادي -> توجيه لكافة المشرفين
+    if user_id not in ADMIN_IDS:
+        sender_name = update.effective_user.full_name
+        username = f"@{update.effective_user.username}" if update.effective_user.username else "بدون معرف"
+        
+        notification = f"📩 <b>وصلتك رسالة جديدة!</b>\n\n• <b>المرسل:</b> {sender_name}\n• <b>المعرف:</b> {username}\n• <b>الآيدي:</b> <code>{user_id}</code>\n\n<i>للرد على الشخص، قم بعمل (Reply) على هذه الرسالة!</i>"
+        
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(chat_id=admin_id, text=notification, parse_mode="HTML")
+                await context.bot.forward_message(
+                    chat_id=admin_id,
+                    from_chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id
+                )
+            except Exception as e:
+                print(f"خطأ في توجيه الرسالة للمشرف {admin_id}: {e}")
+        return
+
+    # 💬 2️⃣ إذا كان أحد المشرفين يرد (Reply) على رسالة أو إشعار
+    if user_id in ADMIN_IDS and update.message.reply_to_message:
+        replied_msg = update.message.reply_to_message
+        target_user_id = None
+
+        if replied_msg.forward_from:
+            target_user_id = replied_msg.forward_from.id
+        elif replied_msg.text or replied_msg.caption:
+            text = replied_msg.text or replied_msg.caption
+            match = re.search(r"الآيدي:\s*(\d+)", text)
+            if match:
+                target_user_id = int(match.group(1))
+
+        if target_user_id:
+            try:
+                await context.bot.copy_message(
+                    chat_id=target_user_id,
+                    from_chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id
+                )
+                await update.message.reply_text("✅ تم إرسال الرد للشخص بنجاح!")
+                return
+            except Exception as e:
+                await update.message.reply_text(f"❌ تعذر إرسال الرد: {e}")
+                return
+
+    # ⚙️ 3️⃣ التحكم في إعدادات البوت من المشرفين
     action = context.user_data.get("action")
 
     if action == "add_group":
@@ -137,23 +197,19 @@ async def auto_post_loop(app):
     
     while True:
         if bot_data["is_running"] and bot_data["groups"] and bot_data["messages"]:
-            # 1️⃣ الانتظار العشوائي الأول عند التشغيل (2 إلى 3 دقائق)
             if first_start:
                 initial_wait = random.randint(120, 180)
                 print(f"تم التشغيل! الانتظار الأول لمدة {initial_wait} ثانية...")
                 await asyncio.sleep(initial_wait)
                 first_start = False
 
-            # 2️⃣ تجميع كل المهام (قروب + رسالة) وخلطها عشوائياً كلياً
             job_queue = []
             for group_id in bot_data["groups"]:
                 for msg in bot_data["messages"]:
                     job_queue.append((group_id, msg))
             
-            # خلط القائمة بالكامل
             random.shuffle(job_queue)
 
-            # 3️⃣ التنفيذ عملية بعملية مع التوقف العشوائي
             for group_id, msg in job_queue:
                 if not bot_data["is_running"]:
                     break
@@ -167,7 +223,6 @@ async def auto_post_loop(app):
                 except Exception as e:
                     print(f"خطأ في الإرسال للقروب {group_id}: {e}")
                 
-                # الفاصل العشوائي بين كل رسالة وأخرى (من 40 ثانية إلى 5 دقائق)
                 between_wait = random.randint(40, 300)
                 print(f"الانتظار للإرسال القادم: {between_wait} ثانية.")
                 await asyncio.sleep(between_wait)
@@ -188,5 +243,5 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_messages))
 
-    print("البوت يعمل بالنظام العشوائي الموزع كلياً...")
+    print("البوت يعمل والآيديات معرفة بنجاح...")
     app.run_polling(drop_pending_updates=True)
