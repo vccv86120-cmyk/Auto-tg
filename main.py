@@ -160,22 +160,15 @@ async def auto_post_loop(app):
         else:
             await asyncio.sleep(10)
 
-# ==================== التشغيل الرئيسي ====================
-async def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+async def post_init(app):
+    asyncio.create_task(auto_post_loop(app))
+
+if __name__ == "__main__":
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_messages))
 
-    asyncio.create_task(auto_post_loop(app))
-
     print("البوت يعمل الآن بنجاح...")
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
-    
-    await asyncio.Event().wait()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    app.run_polling(drop_pending_updates=True)
