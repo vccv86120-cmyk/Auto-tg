@@ -1,6 +1,5 @@
 import os
 import asyncio
-import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -28,24 +27,18 @@ def run_health_check_server():
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
     server.serve_forever()
 
-# تشغيل الخادم في الخلفية لتفعيل الخطة المجانية
 Thread(target=run_health_check_server, daemon=True).start()
 
-# ==================== الإعدادات المجهزة ====================
+# ==================== الإعدادات ====================
 BOT_TOKEN = "8950811882:AAGhfE8JGyjanJgEGPxJSUJHBDo4SjJDea0"
 
-# الحسابين المشرفين المصرح لهما بالتحكم
-ADMIN_IDS = [1330730590, 7994623189]
-
-# بيانات النظام المجهزة في الذاكرة
 bot_data = {
-    "groups": [],         # قائمة أرقام القروبات
-    "messages": [],       # قائمة الرسائل والصور
-    "interval": 60,       # وقت التكرار بالدقائق (الافتراضي 60 دقيقة)
-    "is_running": False   # حالة التشغيل والتوقف
+    "groups": [],
+    "messages": [],
+    "interval": 60,
+    "is_running": False
 }
 
-# ==================== لوحة التحكم والواجهة ====================
 def get_main_keyboard():
     status = "شغال 🟢" if bot_data["is_running"] else "متوقف 🔴"
     keyboard = [
@@ -58,11 +51,6 @@ def get_main_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("عذراً، هذا البوت خاص بالمالك والمشرفين فقط.")
-        return
-    
     await update.message.reply_text(
         "أهلاً بك في لوحة تحكم بوت النشر التلقائي!\nاختر ما تريد القيام به من الأزرار أدناه:",
         reply_markup=get_main_keyboard()
@@ -71,11 +59,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-
-    if user_id not in ADMIN_IDS:
-        return
-
     data = query.data
 
     if data == "toggle_status":
@@ -92,7 +75,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "add_group":
         context.user_data["action"] = "add_group"
-        await query.message.reply_text("أرسل الآن رقم Chat ID الخاص بالقروب (مثال: `-100123456789`):", parse_mode="Markdown")
+        await query.message.reply_text("أرسل الآن رقم Chat ID الخاص بالقروب (مثال: `-100123456789`):")
 
     elif data == "del_group":
         context.user_data["action"] = "del_group"
@@ -100,21 +83,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "add_msg":
         context.user_data["action"] = "add_msg"
-        await query.message.reply_text("أرسل الآن الرسالة (يمكنك إرسال نص فقط، أو صورة مرفقة بنص) ليتم إضافتها لنظام النشر:")
+        await query.message.reply_text("أرسل الآن الرسالة (نص أو صورة) ليتم إضافتها لنظام النشر:")
 
     elif data == "del_msg":
         bot_data["messages"].clear()
-        await query.message.reply_text("🗑️ تم مسح جميع الرسائل والصور من القائمة بنجاح.")
+        await query.message.reply_text("🗑️ تم مسح جميع الرسائل والصور بنجاح.")
 
     elif data == "set_interval":
         context.user_data["action"] = "set_interval"
-        await query.message.reply_text("أدخل الوقت الفاصل بين الرسائل **بالدقائق** (مثال: `30` لـ 30 دقيقة، أو `120` لساعتين):", parse_mode="Markdown")
+        await query.message.reply_text("أدخل الوقت الفاصل بين الرسائل **بالدقائق** (مثال: `30`):")
 
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMIN_IDS:
-        return
-
     action = context.user_data.get("action")
 
     if action == "add_group":
@@ -122,11 +101,11 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             group_id = int(update.message.text.strip())
             if group_id not in bot_data["groups"]:
                 bot_data["groups"].append(group_id)
-                await update.message.reply_text(f"✅ تم إضافة القروب `{group_id}` بنجاح!", parse_mode="Markdown")
+                await update.message.reply_text(f"✅ تم إضافة القروب `{group_id}` بنجاح!")
             else:
                 await update.message.reply_text("⚠️ هذا القروب مضاف سابقاً.")
         except ValueError:
-            await update.message.reply_text("❌ خطأ: يرجى إدخال رقم صحيح للقروب يبدأ بـ -100.")
+            await update.message.reply_text("❌ خطأ: يرجى إدخال رقم صحيح للقروب.")
 
     elif action == "del_group":
         try:
@@ -154,15 +133,14 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             minutes = int(update.message.text.strip())
             if minutes > 0:
                 bot_data["interval"] = minutes
-                await update.message.reply_text(f"⏱️ تم ضبط وقت التكرار إلى **{minutes} دقيقة**.", parse_mode="Markdown")
+                await update.message.reply_text(f"⏱️ تم ضبط وقت التكرار إلى **{minutes} دقيقة**.")
             else:
                 await update.message.reply_text("❌ يجب أن يكون الرقم أكبر من صفر.")
         except ValueError:
-            await update.message.reply_text("❌ يرجى إدخال رقم صحيح بالدقائق.")
+            await update.message.reply_text("❌ يرجى إدخال رقم صحيح.")
 
     context.user_data["action"] = None
 
-# ==================== محرك النشر التلقائي ====================
 async def auto_post_loop(app):
     while True:
         if bot_data["is_running"] and bot_data["groups"] and bot_data["messages"]:
@@ -176,22 +154,28 @@ async def auto_post_loop(app):
                         elif msg["type"] == "photo":
                             await app.bot.send_photo(chat_id=group_id, photo=msg["file_id"], caption=msg.get("caption", ""))
                     except Exception as e:
-                        print(f"خطأ في الإرسال للقروب {group_id}: {e}")
+                        print(f"خطأ في الإرسال: {e}")
                 
                 await asyncio.sleep(bot_data["interval"] * 60)
         else:
             await asyncio.sleep(10)
 
 # ==================== التشغيل الرئيسي ====================
-if __name__ == "__main__":
+async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_messages))
 
-    loop = asyncio.get_event_loop()
-    loop.create_task(auto_post_loop(app))
+    asyncio.create_task(auto_post_loop(app))
 
-    print("البوت يعمل الآن بنجاح مع دعم الخطة المجانية...")
-    app.run_polling()
+    print("البوت يعمل الآن بنجاح...")
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+    
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
