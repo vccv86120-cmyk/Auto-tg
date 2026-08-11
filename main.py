@@ -1,5 +1,6 @@
 import os
 import asyncio
+import nest_asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -11,6 +12,9 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+
+# حل مشكلة Event Loop في إصدارات بايثون الحديثة
+nest_asyncio.apply()
 
 # ==================== خادم التفعيل المجاني لـ Render ====================
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -164,6 +168,9 @@ async def post_init(app):
     asyncio.create_task(auto_post_loop(app))
 
 if __name__ == "__main__":
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
