@@ -85,6 +85,7 @@ def get_main_keyboard():
     keyboard = [
         [InlineKeyboardButton(f"حالة البوت: {status}", callback_data="toggle_status")],
         [InlineKeyboardButton(f"🔄 نمط النشر الحالي: [{mode_str}]", callback_data="toggle_mode")],
+        [InlineKeyboardButton("🚀 إرسال فوري الآن لكل القروبات", callback_data="force_send_now")],
         [InlineKeyboardButton(f"وضع الهدوء (من {bot_data['quiet_start']} إلى {bot_data['quiet_end']}): [{quiet_status}]", callback_data="toggle_quiet")],
         [InlineKeyboardButton("⚙️ ضبط ساعات الهدوء", callback_data="set_quiet_hours")],
         [InlineKeyboardButton("📊 التقرير اليومي", callback_data="show_daily_report")],
@@ -106,7 +107,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("أهلاً بك! تم استلام رسالتك وسنرد عليك في أقرب وقت.")
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ أمر /stats لعرض الإحصائيات اليومية فوراً في الخاص """
     if update.effective_user.id not in ADMIN_IDS:
         return
     
@@ -125,6 +125,19 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text(info, parse_mode="HTML")
 
+async def send_msg_to_group(app, group_id, msg):
+    try:
+        if msg["type"] == "text":
+            await app.bot.send_message(chat_id=group_id, text=msg["text"])
+        elif msg["type"] == "photo":
+            await app.bot.send_photo(chat_id=group_id, photo=msg["file_id"], caption=msg.get("caption", ""))
+        
+        bot_data["stats_posts_today"] += 1
+        bot_data["group_posts_count"][group_id] = bot_data["group_posts_count"].get(group_id, 0) + 1
+        print(f"✅ تم الإرسال بنجاح للقروب {group_id}")
+    except Exception as e:
+        print(f"❌ خطأ الإرسال للقروب {group_id}: {e}")
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -141,6 +154,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "toggle_mode":
         bot_data["mode"] = "time" if bot_data["mode"] == "messages" else "messages"
         await query.edit_message_reply_markup(reply_markup=get_main_keyboard())
+
+    elif data == "force_send_now":
+        if not bot_data["groups"]:
+            await query.message.reply_text("⚠️ لا توجد أي قروبات مضافة حالياً للإرسال إليها.")
+            return
+        if not bot_data["messages"]:
+            await query.message.reply_text("⚠️ لا توجد أي رسائل أو صور مخزنة للإرسال!")
+            return
+        
+        await query.message.reply_text("🚀 جاري إرسال منشور فوري لجميع القروبات المضافة...")
+        for g_id in bot_data["groups"]:
+            msg = random.choice(bot_data["messages"])
+            await send_msg_to_group(context.application, g_id, msg)
+        await query.message.reply_text("✅ تم الانتهاء من الإرسال الفوري بنجاح!")
 
     elif data == "toggle_quiet":
         bot_data["quiet_mode_enabled"] = not bot_data["quiet_mode_enabled"]
@@ -232,19 +259,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "del_all_msg":
         bot_data["messages"].clear()
         await query.message.reply_text("🗑️ تم مسح جميع الرسائل والصور بنجاح.")
-
-async def send_msg_to_group(app, group_id, msg):
-    try:
-        if msg["type"] == "text":
-            await app.bot.send_message(chat_id=group_id, text=msg["text"])
-        elif msg["type"] == "photo":
-            await app.bot.send_photo(chat_id=group_id, photo=msg["file_id"], caption=msg.get("caption", ""))
-        
-        bot_data["stats_posts_today"] += 1
-        bot_data["group_posts_count"][group_id] = bot_data["group_posts_count"].get(group_id, 0) + 1
-        print(f"✅ تم الإرسال بنجاح للقروب {group_id}")
-    except Exception as e:
-        print(f"❌ خطأ الإرسال للقروب {group_id}: {e}")
 
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_chat or not update.message:
@@ -454,7 +468,7 @@ async def time_based_post_loop(app):
                 base_sec = bot_data["interval"] * 60
                 await asyncio.sleep(random.randint(int(base_sec * 0.9), int(base_sec * 1.1)))
         else:
-            first_start = True
+            first_start>True if False else None
             await asyncio.sleep(10)
 
 async def post_init(app):
