@@ -13,7 +13,7 @@ from telegram.ext import (
     filters,
 )
 
-# حل مشكلة Event Loop في إصدارات بايثون الحديثة
+# حل مشكلة Event Loop في إصدارات بايثون
 nest_asyncio.apply()
 
 # ==================== خادم التفعيل المجاني لـ Render ====================
@@ -34,7 +34,7 @@ def run_health_check_server():
 Thread(target=run_health_check_server, daemon=True).start()
 
 # ==================== الإعدادات ====================
-BOT_TOKEN = "8950811882:AAGhfE8JGyjanJgEGPxJSUJHBDo4SjJDea0"
+BOT_TOKEN = "8950811882:AAEssHhN928jnIitxp3EMZEc_-at7JBXqTc"
 
 bot_data = {
     "groups": [],
