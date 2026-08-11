@@ -1,5 +1,6 @@
 import os
 import asyncio
+import random
 import nest_asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
@@ -49,7 +50,6 @@ def get_main_keyboard():
         [InlineKeyboardButton(f"حالة البوت: {status}", callback_data="toggle_status")],
         [InlineKeyboardButton("➕ إضافة قروب", callback_data="add_group"), InlineKeyboardButton("❌ حذف قروب", callback_data="del_group")],
         [InlineKeyboardButton("➕ إضافة رسالة/صورة", callback_data="add_msg"), InlineKeyboardButton("❌ حذف كل الرسائل", callback_data="del_msg")],
-        [InlineKeyboardButton("⏱️ تغيير وقت التكرار", callback_data="set_interval")],
         [InlineKeyboardButton("📋 عرض الإعدادات الحالية", callback_data="show_info")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -73,7 +73,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info = f"<b>📊 الإعدادات الحالية:</b>\n\n"
         info += f"• <b>عدد القروبات:</b> {len(bot_data['groups'])}\n"
         info += f"• <b>عدد الرسائل والصور:</b> {len(bot_data['messages'])}\n"
-        info += f"• <b>التكرار كل:</b> {bot_data['interval']} دقيقة\n"
+        info += f"• <b>التأخير الأول:</b> عشوائي (2 - 3 دقائق)\n"
+        info += f"• <b>الفاصل بين كل رسالة:</b> عشوائي (40 ثانية - 5 دقائق)\n"
+        info += f"• <b>نمط التوزيع:</b> عشوائي وموزع بالكامل بين القروبات 🔀\n"
         info += f"• <b>حالة النشر:</b> {'مفعل 🟢' if bot_data['is_running'] else 'متوقف 🔴'}"
         await query.message.reply_text(info, parse_mode="HTML")
 
@@ -92,10 +94,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "del_msg":
         bot_data["messages"].clear()
         await query.message.reply_text("🗑️ تم مسح جميع الرسائل والصور بنجاح.")
-
-    elif data == "set_interval":
-        context.user_data["action"] = "set_interval"
-        await query.message.reply_text("أدخل الوقت الفاصل بين الرسائل **بالدقائق** (مثال: `30`):")
 
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = context.user_data.get("action")
@@ -132,37 +130,50 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             bot_data["messages"].append({"type": "text", "text": update.message.text})
             await update.message.reply_text("✅ تم حفظ النص بنجاح!")
 
-    elif action == "set_interval":
-        try:
-            minutes = int(update.message.text.strip())
-            if minutes > 0:
-                bot_data["interval"] = minutes
-                await update.message.reply_text(f"⏱️ تم ضبط وقت التكرار إلى **{minutes} دقيقة**.")
-            else:
-                await update.message.reply_text("❌ يجب أن يكون الرقم أكبر من صفر.")
-        except ValueError:
-            await update.message.reply_text("❌ يرجى إدخال رقم صحيح.")
-
     context.user_data["action"] = None
 
 async def auto_post_loop(app):
+    first_start = True
+    
     while True:
         if bot_data["is_running"] and bot_data["groups"] and bot_data["messages"]:
-            for msg in bot_data["messages"]:
+            # 1️⃣ الانتظار العشوائي الأول عند التشغيل (2 إلى 3 دقائق)
+            if first_start:
+                initial_wait = random.randint(120, 180)
+                print(f"تم التشغيل! الانتظار الأول لمدة {initial_wait} ثانية...")
+                await asyncio.sleep(initial_wait)
+                first_start = False
+
+            # 2️⃣ تجميع كل المهام (قروب + رسالة) وخلطها عشوائياً كلياً
+            job_queue = []
+            for group_id in bot_data["groups"]:
+                for msg in bot_data["messages"]:
+                    job_queue.append((group_id, msg))
+            
+            # خلط القائمة بالكامل
+            random.shuffle(job_queue)
+
+            # 3️⃣ التنفيذ عملية بعملية مع التوقف العشوائي
+            for group_id, msg in job_queue:
                 if not bot_data["is_running"]:
                     break
-                for group_id in bot_data["groups"]:
-                    try:
-                        if msg["type"] == "text":
-                            await app.bot.send_message(chat_id=group_id, text=msg["text"])
-                        elif msg["type"] == "photo":
-                            await app.bot.send_photo(chat_id=group_id, photo=msg["file_id"], caption=msg.get("caption", ""))
-                    except Exception as e:
-                        print(f"خطأ في الإرسال: {e}")
+                try:
+                    if msg["type"] == "text":
+                        await app.bot.send_message(chat_id=group_id, text=msg["text"])
+                    elif msg["type"] == "photo":
+                        await app.bot.send_photo(chat_id=group_id, photo=msg["file_id"], caption=msg.get("caption", ""))
+                    
+                    print(f"تم الإرسال للقروب {group_id}")
+                except Exception as e:
+                    print(f"خطأ في الإرسال للقروب {group_id}: {e}")
                 
-                await asyncio.sleep(bot_data["interval"] * 60)
+                # الفاصل العشوائي بين كل رسالة وأخرى (من 40 ثانية إلى 5 دقائق)
+                between_wait = random.randint(40, 300)
+                print(f"الانتظار للإرسال القادم: {between_wait} ثانية.")
+                await asyncio.sleep(between_wait)
         else:
-            await asyncio.sleep(10)
+            first_start = True
+            await asyncio.sleep(5)
 
 async def post_init(app):
     asyncio.create_task(auto_post_loop(app))
@@ -177,5 +188,5 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_messages))
 
-    print("البوت يعمل الآن بنجاح...")
+    print("البوت يعمل بالنظام العشوائي الموزع كلياً...")
     app.run_polling(drop_pending_updates=True)
