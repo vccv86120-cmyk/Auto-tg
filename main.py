@@ -1,5 +1,8 @@
+import os
 import asyncio
 import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -9,6 +12,24 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+
+# ==================== خادم التفعيل المجاني لـ Render ====================
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running successfully!")
+
+    def log_message(self, format, *args):
+        return
+
+def run_health_check_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
+# تشغيل الخادم في الخلفية لتفعيل الخطة المجانية
+Thread(target=run_health_check_server, daemon=True).start()
 
 # ==================== الإعدادات المجهزة ====================
 BOT_TOKEN = "8950811882:AAGhfE8JGyjanJgEGPxJSUJHBDo4SjJDea0"
@@ -157,7 +178,6 @@ async def auto_post_loop(app):
                     except Exception as e:
                         print(f"خطأ في الإرسال للقروب {group_id}: {e}")
                 
-                # انتظار الوقت المحدد بالدقائق قبل نشر الرسالة التالية
                 await asyncio.sleep(bot_data["interval"] * 60)
         else:
             await asyncio.sleep(10)
@@ -173,5 +193,5 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(auto_post_loop(app))
 
-    print("البوت يعمل الآن بنجاح مع دعم الحسابين المشرفين...")
+    print("البوت يعمل الآن بنجاح مع دعم الخطة المجانية...")
     app.run_polling()
